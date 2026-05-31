@@ -1,4 +1,4 @@
-# C++ Limit Order Book and Matching Engine
+# C++ OrderBook Engine
 
 A learning-focused C++ project that simulates the core behavior of a trading system’s order book and matching engine.
 
