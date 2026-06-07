@@ -1,5 +1,9 @@
 #include <iostream>
 #include <cstdlib>
+#include <sstream>
+#include <iomanip>
+#include <string>
+#include <cstdint>
 
 #include "OrderBook.hpp"
 #include "TradeHistory.hpp"
@@ -18,6 +22,61 @@ void Pause()
     std::cout << "\nPress Enter to continue...";
     std::cin.ignore();
     std::cin.get();
+}
+
+std::uint64_t ParsePriceToTicks(const std::string &priceInput)
+{
+    std::string dollarsPart;
+    std::string centsPart;
+
+    size_t pointPosition = priceInput.find('.');
+
+    if (pointPosition == std::string::npos)
+    {
+        dollarsPart = priceInput;
+        centsPart = "00";
+    }
+    else
+    {
+        dollarsPart = priceInput.substr(0, pointPosition);
+        centsPart = priceInput.substr(pointPosition + 1);
+    }
+
+    if (dollarsPart.empty())
+    {
+        dollarsPart = "0";
+    }
+
+    if (centsPart.empty())
+    {
+        centsPart = "00";
+    }
+    else if (centsPart.length() == 1)
+    {
+        centsPart += "0";
+    }
+    else if (centsPart.length() > 2)
+    {
+        centsPart = centsPart.substr(0, 2);
+    }
+
+    std::uint64_t dollars = std::stoull(dollarsPart);
+    std::uint64_t cents = std::stoull(centsPart);
+
+    return (dollars * 100) + cents;
+}
+
+std::string FormatPrice(std::uint64_t priceTicks)
+{
+    std::uint64_t dollars = priceTicks / 100;
+    std::uint64_t cents = priceTicks % 100;
+
+    std::ostringstream output;
+
+    output << "$" << dollars << "."
+           << std::setw(2) << std::setfill('0') << cents;
+
+    return output.str();
 }
 
 int main()
@@ -100,8 +159,12 @@ int main()
 
             if (type == OrderType::Limit)
             {
+                std::string priceInput;
+
                 std::cout << "Enter Limit Price: ";
-                std::cin >> priceTicks;
+                std::cin >> priceInput;
+
+                priceTicks = ParsePriceToTicks(priceInput);
             }
 
             ClearScreen();
@@ -113,7 +176,7 @@ int main()
 
             if (type == OrderType::Limit)
             {
-                std::cout << "Price: " << priceTicks << std::endl;
+                std::cout << "Price: " << FormatPrice(priceTicks) << std::endl;
             }
 
             std::cout << "=================================================\n\n";
