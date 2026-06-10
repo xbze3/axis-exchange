@@ -1,10 +1,11 @@
 #include <iostream>
 #include <iterator>
+#include <string>
 
 #include "OrderBook.hpp"
 #include "Utils.hpp"
 
-OrderBook::OrderBook()
+OrderBook::OrderBook(const std::string &symbol) : symbol(symbol)
 {
     nextOrderId = 1;
     nextOrderSequenceNumber = 1;
@@ -30,7 +31,7 @@ void OrderBook::HandleMarketBuy(Order &NewOrder)
             NewOrder.quantity -= TradeQuantity;
             BestSellOrder.quantity -= TradeQuantity;
 
-            tradeHistory.AddTrade(NewOrder.id, BestSellOrder.id, BestSellPrice, TradeQuantity, AggressorSide::Buy);
+            tradeHistory.AddTrade(symbol, NewOrder.id, BestSellOrder.id, BestSellPrice, TradeQuantity, AggressorSide::Buy);
             std::cout << "TRADE: Buy Order " << NewOrder.id << " matched with Sell Order " << BestSellOrder.id << " | Price: " << FormatPrice(BestSellPrice) << " | Quantity: " << TradeQuantity << " | Order Type: Market" << std::endl;
 
             if (BestSellOrder.quantity == 0)
@@ -79,7 +80,7 @@ void OrderBook::HandleMarketSell(Order &NewOrder)
             NewOrder.quantity -= TradeQuantity;
             BestBuyOrder.quantity -= TradeQuantity;
 
-            tradeHistory.AddTrade(BestBuyOrder.id, NewOrder.id, BestBuyPrice, TradeQuantity, AggressorSide::Sell);
+            tradeHistory.AddTrade(symbol, BestBuyOrder.id, NewOrder.id, BestBuyPrice, TradeQuantity, AggressorSide::Sell);
             std::cout << "TRADE: Sell Order " << NewOrder.id << " matched with Buy Order " << BestBuyOrder.id << " | Price: " << FormatPrice(BestBuyPrice) << " | Quantity: " << TradeQuantity << " | Order Type: Market" << std::endl;
 
             if (BestBuyOrder.quantity == 0)
@@ -131,7 +132,7 @@ void OrderBook::HandleLimitBuy(Order &NewOrder)
             NewOrder.quantity -= TradeQuantity;
             BestSellOrder.quantity -= TradeQuantity;
 
-            tradeHistory.AddTrade(NewOrder.id, BestSellOrder.id, BestSellPrice, TradeQuantity, AggressorSide::Buy);
+            tradeHistory.AddTrade(symbol, NewOrder.id, BestSellOrder.id, BestSellPrice, TradeQuantity, AggressorSide::Buy);
             std::cout << "TRADE: Buy Order " << NewOrder.id << " matched with Sell Order " << BestSellOrder.id << " | Price: " << FormatPrice(BestSellPrice) << " | Quantity: " << TradeQuantity << " | Order Type: Limit" << std::endl;
 
             if (BestSellOrder.quantity == 0)
@@ -183,7 +184,7 @@ void OrderBook::HandleLimitSell(Order &NewOrder)
             NewOrder.quantity -= TradeQuantity;
             BestBuyOrder.quantity -= TradeQuantity;
 
-            tradeHistory.AddTrade(BestBuyOrder.id, NewOrder.id, BestBuyPrice, TradeQuantity, AggressorSide::Sell);
+            tradeHistory.AddTrade(symbol, BestBuyOrder.id, NewOrder.id, BestBuyPrice, TradeQuantity, AggressorSide::Sell);
             std::cout << "TRADE: Sell Order " << NewOrder.id << " matched with Buy Order " << BestBuyOrder.id << " | Price: " << FormatPrice(BestBuyPrice) << " | Quantity: " << TradeQuantity << " | Order Type: Limit" << std::endl;
 
             if (BestBuyOrder.quantity == 0)

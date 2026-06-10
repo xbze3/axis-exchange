@@ -25,7 +25,7 @@ bool ExchangeEngine::AddBook(const std::string &symbol)
         return false;
     }
 
-    OrderBooks.emplace(id, OrderBook());
+    OrderBooks.try_emplace(id, symbol);
 
     std::cout << "BOOK ADDED: Symbol " << symbol << " | Instrument ID: " << id.value << std::endl;
 

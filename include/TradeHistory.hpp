@@ -13,7 +13,7 @@ class TradeHistory
 public:
     TradeHistory();
 
-    void AddTrade(std::uint64_t buyOrderId, std::uint64_t sellOrderId, std::uint64_t priceTicks, int quantity, AggressorSide aggressorSide);
+    void AddTrade(const std::string &symbol, std::uint64_t buyOrderId, std::uint64_t sellOrderId, std::uint64_t priceTicks, int quantity, AggressorSide aggressorSide);
 
     void PrintTradeHistory() const;
 };

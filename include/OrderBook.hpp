@@ -5,6 +5,7 @@
 #include <map>
 #include <unordered_map>
 #include <list>
+#include <string>
 
 #include "Order.hpp"
 #include "OrderLocation.hpp"
@@ -12,6 +13,8 @@
 
 class OrderBook
 {
+    std::string symbol;
+
     std::uint64_t nextOrderId;
     std::uint64_t nextOrderSequenceNumber;
 
@@ -23,7 +26,7 @@ class OrderBook
     TradeHistory tradeHistory;
 
 public:
-    OrderBook();
+    OrderBook(const std::string &symbol);
 
     void HandleMarketBuy(Order &NewOrder);
     void HandleMarketSell(Order &NewOrder);
