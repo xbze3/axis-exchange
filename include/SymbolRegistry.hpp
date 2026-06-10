@@ -14,11 +14,14 @@ class SymbolRegistry
 
     std::string NormalizeSymbol(const std::string &symbol) const;
 
+    std::uint64_t nextInstrumentId;
+
 public:
     SymbolRegistry();
 
     bool RegisterInstrument(const std::string &symbol);
     bool HasSymbol(const std::string &symbol) const;
     bool TryGetInstrumentId(const std::string &symbol, InstrumentId &instrumentId) const;
-    bool TryGetSymbol(const std::string &symbol, InstrumentId &instrumentId) const;
+    bool TryGetSymbol(const InstrumentId &instrumentId, std::string &symbol) const;
+
 };
