@@ -2,27 +2,18 @@
 
 Axis Exchange is a small C++ exchange simulator with order books, symbol routing, matching, cancellations, and trade history.
 
-I built this project to understand how orders are stored, matched, filled, cancelled, routed by symbol, and displayed. It is not a production exchange. It is a learning project focused on price-time priority, order matching, trade recording, order lookup, and basic exchange-style routing.
+I built this project to better understand how orders are stored, routed, matched, filled, cancelled, and recorded. It is not a production exchange, it is a learning project focused on price-time priority, matching logic, order lookup, symbol routing, and exchange-level trade recording.
 
 ---
 
 ## Features
 
-- Buy and sell orders
-- Limit and market orders
-- Price-time priority
-- Partial and full fills
-- Resting order storage
-- Order cancellation by order ID
-- Price-level cleanup after fills and cancellations
-- Order lookup using saved order locations
-- Best bid, best ask, and spread display
-- Trade history per order book
-- Multiple order books through an exchange engine
-- Symbol registry for routing orders by symbol
-- Integer-based price ticks using `std::uint64_t`
-- User-friendly price input such as `100.50`
-- Formatted terminal output
+- Limit and market orders with price-time priority
+- Partial and full fills, with resting limit orders
+- Order cancellation by ID with price-level cleanup
+- Multiple order books routed by symbol
+- Exchange-level trade history with global trade IDs
+- Integer-based price ticks with user-friendly input
 - Interactive command-line interface
 
 ---
@@ -34,21 +25,21 @@ The project is built around a few main parts:
 - `Order` represents a buy or sell request.
 - `OrderBook` stores active orders and runs the matching logic.
 - `OrderLocation` tracks where a resting order lives in the book.
-- `Trade` represents one completed match.
-- `TradeHistory` stores executed trades.
+- `ExecutionReport` represents a match created inside an order book.
+- `OrderResult` describes what happened after an order was submitted.
+- `Trade` represents one completed trade.
+- `TradeHistory` stores official exchange-level trades.
 - `InstrumentId` represents the internal ID for a symbol.
 - `SymbolRegistry` maps symbols to instrument IDs.
 - `ExchangeEngine` manages multiple order books and routes orders to the correct book.
 
-Each `OrderBook` owns its own orders and trade history. The `ExchangeEngine` sits above the books and decides which book should receive an order.
+Each `OrderBook` owns its active orders and matching logic. When a match happens, the book returns execution reports to the `ExchangeEngine`. The engine then records those executions as official trades in the exchange-level trade history.
 
 ---
 
 ## Exchange Engine
 
-The `ExchangeEngine` manages multiple books.
-
-Example:
+The `ExchangeEngine` manages multiple books and routes orders by symbol:
 
 ```text
 BTI -> OrderBook
@@ -56,58 +47,59 @@ DTC -> OrderBook
 DBL -> OrderBook
 ```
 
-Orders are submitted with a symbol:
-
 ```cpp
 engine.SubmitOrder("BTI", OrderSide::Buy, OrderType::Limit, 10050, 10);
 ```
 
-The engine uses the `SymbolRegistry` to find the correct `InstrumentId`, then routes the order to the matching `OrderBook`.
+The engine uses the `SymbolRegistry` to find the correct `InstrumentId`, then routes the order to the matching `OrderBook`. If trades occur, the book returns execution reports and the engine records them with global trade IDs.
 
 ---
 
 ## Orders
 
-Each order stores:
+Each order stores its ID, side, type, price ticks, quantity, sequence number, and creation timestamp.
 
-- Order ID
-- Side: buy or sell
-- Type: market or limit
-- Price ticks
-- Quantity
-- Sequence number
-- Creation timestamp
+Order IDs are local to each order book, different books can have orders with the same ID. Trade IDs are global, assigned by the exchange-level `TradeHistory`.
 
-Limit orders may rest in the book if they are not fully matched. Market orders try to fill immediately against the opposite side of the book. Any unfilled market quantity is cancelled.
+Limit orders may rest in the book if not fully matched. Market orders fill immediately against the opposite side; any unfilled quantity is cancelled.
+
+---
+
+## Order Results
+
+`OrderResult` describes what happened after an order is submitted:
+
+- Rejected
+- Accepted and resting
+- Fully filled
+- Partially filled
+- Cancelled unfilled
+
+This avoids treating every empty execution report the same way, for example, a resting limit order and an unfilled market order both have no trades, but they are different outcomes.
+
+---
+
+## Execution Reports and Trades
+
+When an order matches, the `OrderBook` creates an `ExecutionReport` containing the symbol, buy/sell order IDs, price, quantity, and aggressor side. The exchange engine records these as official trades in `TradeHistory`.
+
+```text
+OrderBook        -> matches orders, returns execution reports
+ExchangeEngine   -> records official trades, assigns global trade IDs
+```
 
 ---
 
 ## Price Ticks
 
-Prices are stored internally as integer ticks instead of floating-point values.
+Prices are stored as integer ticks:
 
 ```text
 10050 ticks -> $100.50
 9975 ticks  -> $99.75
 ```
 
-The CLI accepts prices like:
-
-```text
-100
-100.5
-100.50
-99.75
-```
-
-and converts them into ticks before sending them to the engine.
-
-Price and timestamp formatting are shared through:
-
-```text
-include/Utils.hpp
-src/Utils.cpp
-```
+The CLI accepts inputs like `100`, `100.5`, or `99.75` and converts them to ticks. Formatting utilities live in `include/Utils.hpp` and `src/Utils.cpp`.
 
 ---
 
@@ -119,15 +111,11 @@ src/Utils.cpp
 std::map<std::uint64_t, std::list<Order>, std::greater<std::uint64_t>> BuyOrders;
 ```
 
-Buy orders are grouped by price, with the best bid first.
-
 ### Sell Orders
 
 ```cpp
 std::map<std::uint64_t, std::list<Order>> SellOrders;
 ```
-
-Sell orders are grouped by price, with the best ask first.
 
 ### Order Locations
 
@@ -135,9 +123,7 @@ Sell orders are grouped by price, with the best ask first.
 std::unordered_map<std::uint64_t, OrderLocation> OrderLocations;
 ```
 
-This maps an order ID to its current location in the book.
-
-`OrderLocation` stores the side, price level, and list iterator for a resting order. This allows direct cancellation without scanning every price level.
+Maps an order ID to its side, price level, and list iterator for direct cancellation without scanning the book.
 
 ### Symbol Registry
 
@@ -146,96 +132,40 @@ std::unordered_map<std::string, InstrumentId> symbolToInstrumentId;
 std::unordered_map<std::uint64_t, std::string> instrumentIdToSymbol;
 ```
 
-The registry maps symbols such as `BTI` or `DTC` to internal instrument IDs.
-
 ### Exchange Books
 
 ```cpp
 std::map<InstrumentId, OrderBook> OrderBooks;
 ```
 
-The exchange engine stores one order book per instrument.
-
 ---
 
 ## Matching Behavior
 
-### Limit Buy
+**Limit buy** - matches against the lowest available sells, up to the buy limit price.
 
-A buy limit order matches with the lowest available sell prices first, as long as the sell price is less than or equal to the buy limit.
+**Limit sell** - matches against the highest available buys, down to the sell limit price.
 
-Example: a buy limit at `$102.00` can match with sells at `$101.25` and `$102.00`, but not above `$102.00`.
-
-### Limit Sell
-
-A sell limit order matches with the highest available buy prices first, as long as the buy price is greater than or equal to the sell limit.
-
-Example: a sell limit at `$100.50` can match with buys at `$100.50`, `$101.00`, and `$102.00`, but not below `$100.50`.
-
-### Market Orders
-
-Market orders consume the best available orders on the opposite side until they are filled or the opposite side is empty.
-
-Any remaining market quantity is cancelled.
+**Market orders** - consume the best available opposite-side orders until filled or the side is empty. Any remaining quantity is cancelled.
 
 ---
 
 ## Order Cancellation
 
-Resting orders can be cancelled by order ID.
-
-When a limit order rests in the book, its location is saved in `OrderLocations`. When `CancelOrder` is called, the engine uses the saved side, price level, and iterator to remove the order from the correct list.
-
-If the price level becomes empty, that level is removed from the book. The order ID is also removed from `OrderLocations`.
-
-Filled orders are removed from `OrderLocations` so they cannot be cancelled later.
+When a limit order rests, its location is saved in `OrderLocations`. `CancelOrder` uses the saved side, price level, and iterator to remove it directly. Empty price levels are cleaned up, and filled orders are removed from `OrderLocations` so they cannot be cancelled.
 
 ---
 
 ## Command-Line Interface
 
-The project includes a simple terminal interface in `main.cpp`.
-
-The menu allows you to:
-
 ```text
 1. Place Order
 2. View Order Book
-3. View Trade History
+3. View Book Trade History
 4. Cancel Order
 5. View All Books
-6. Exit
-```
-
-The CLI starts by loading a few sample GSE-style symbols into the exchange engine.
-
----
-
-## Example CLI Flow
-
-```text
-1. Place Order
-2. View Order Book
-3. View Trade History
-4. Cancel Order
-5. View All Books
-6. Exit
-
-Symbol   > BTI
-Side     > 1
-Type     > 1
-Quantity > 10
-Price    > 100.50
-```
-
-Example cancellation:
-
-```text
-Symbol   > BTI
-Order ID > 2
-
-CANCELLED: Buy Order 2 | Price: $99.75
-PRICE LEVEL REMOVED: Buy level $99.75 is now empty.
+6. View Exchange Trade History
+7. Exit
 ```
 
 ---
@@ -243,31 +173,32 @@ PRICE LEVEL REMOVED: Buy level $99.75 is now empty.
 ## Example Output
 
 ```text
+ORDER RECEIVED: Symbol BTI | Side BUY | Type LIMIT | Quantity 20 | Price $102.00
 TRADE: Buy Order 6 matched with Sell Order 3 | Price: $101.25 | Quantity: 3 | Order Type: Limit
 TRADE: Buy Order 6 matched with Sell Order 4 | Price: $102.00 | Quantity: 12 | Order Type: Limit
+ORDER MATCHED: Symbol BTI | Trades executed: 2
+TRADE HISTORY UPDATED: Added 2 trade(s) to exchange-level history.
+```
 
+```text
 ############################################################
-#                       ORDER BOOK                         #
+#                     TRADE HISTORY                        #
 ############################################################
 
-============================================================
-  SELL SIDE / ASKS
-============================================================
-  No sell orders.
+  Total trades executed:      7
+  Total volume:               35
+  Buy-aggressed:              4
+  Sell-aggressed:             3
 
-  Spread unavailable - both sides need orders.
-
-============================================================
-  BUY SIDE / BIDS
-============================================================
-  PRICE       QTY       ORDER ID    SEQ         LVL QTY
-  ----------------------------------------------------------
-  $102.00     5         6           6           5
-  ----------------------------------------------------------
-  $100.50     10        1           1           10
-  ----------------------------------------------------------
-  $99.75      5         2           2           5
-  ----------------------------------------------------------
+  --------------------------------------------------------
+  * TRADE #1      Symbol: BTI           Aggressor: BUY
+    Buy order     #5                    Sell order    #3
+    Price         $101.25               Quantity      4
+    --------------------------------------------------------
+  * TRADE #7      Symbol: DTC           Aggressor: BUY
+    Buy order     #3                    Sell order    #2
+    Price         $255.00               Quantity      5
+    --------------------------------------------------------
 ```
 
 ---
@@ -275,15 +206,17 @@ TRADE: Buy Order 6 matched with Sell Order 4 | Price: $102.00 | Quantity: 12 | O
 ## Project Structure
 
 ```text
-cpp-orderbook-engine/
+axis-exchange/
 │
 ├── include/
 │   ├── Enums.hpp
 │   ├── ExchangeEngine.hpp
+│   ├── ExecutionReport.hpp
 │   ├── InstrumentId.hpp
 │   ├── Order.hpp
 │   ├── OrderBook.hpp
 │   ├── OrderLocation.hpp
+│   ├── OrderResult.hpp
 │   ├── SymbolRegistry.hpp
 │   ├── Trade.hpp
 │   ├── TradeHistory.hpp
@@ -312,80 +245,45 @@ cpp-orderbook-engine/
 
 ## Build and Run
 
-From the project root:
-
 ```bash
 g++ main.cpp src/ExchangeEngine.cpp src/InstrumentId.cpp src/Order.cpp src/OrderBook.cpp src/OrderLocation.cpp src/SymbolRegistry.cpp src/Trade.cpp src/TradeHistory.cpp src/Utils.cpp -I include -o main
-```
-
-Run:
-
-```bash
 ./main
 ```
 
-On Windows PowerShell:
+Windows:
 
 ```powershell
 .\main.exe
 ```
 
----
-
-## Run the Test File
-
-Compile:
+### Tests
 
 ```bash
 g++ tests/TestLogic.cpp src/ExchangeEngine.cpp src/InstrumentId.cpp src/Order.cpp src/OrderBook.cpp src/OrderLocation.cpp src/SymbolRegistry.cpp src/Trade.cpp src/TradeHistory.cpp src/Utils.cpp -I include -o TestLogic
-```
-
-Run:
-
-```bash
 ./TestLogic
-```
-
-On Windows PowerShell:
-
-```powershell
-.\TestLogic.exe
 ```
 
 ---
 
 ## What I Learned
 
-This project helped me practice:
-
-- C++ classes and headers
-- `std::map`, `std::unordered_map`, `std::list`, and `std::vector`
+- C++ classes, headers, and multi-file project structure
+- `std::map`, `std::unordered_map`, `std::list`, `std::vector`
 - References and stable iterators
-- Price-time priority
-- Integer-based price handling
-- Matching engine logic
-- Partial fills
-- Order cancellation
-- Trade history design
-- Symbol routing
-- Multi-book exchange structure
-- Multi-file C++ project structure
-- Simple terminal UI design
+- Price-time priority and matching engine logic
+- Partial fills, order cancellation, and execution reports
+- Integer-based price handling and symbol routing
 
 ---
 
 ## Future Improvements
 
-Possible next steps:
-
-- Add a fuller GSE simulation setup
-- Add more tests for edge cases
-- Add order modification
-- Add CSV export for orders and trades
-- Add performance benchmarks
-- Support configurable tick sizes
-- Add structured return results instead of only printing
-- Add an API or WebSocket layer for external order submission
+- Fuller GSE simulation setup
+- More edge case tests
+- Order modification
+- CSV export for trades
+- Configurable tick sizes
+- API or WebSocket layer for external order submission
 
 ---
 
